@@ -35,8 +35,9 @@ app.post("/email", cors({ origin: "*" }), async (req, res) => {
 
   transport.sendMail(
     {
-      from: `crivas@i-nimble.com`,
+      from: `mihogarenatlanta@gmail.com`,
       to: `mihogarenatlanta@gmail.com`,
+      replyTo: email,
       subject: `Website Contact Form: ${name}`,
       text: `Nombre: ${name} \n Telefono: ${tel} \n Correo: ${email} \n Mensaje: ${message}`,
     },
