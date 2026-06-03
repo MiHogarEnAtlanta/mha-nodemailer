@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
+const { ConfidentialClientApplication } = require("@azure/msal-node");
 require("dotenv").config();
 
 const PORT = 3000;
@@ -12,46 +12,71 @@ app.use(bodyParser.json());
 
 app.use(cors());
 
+// MSAL: client credentials flow (app-only, sin login de usuario)
+const cca = new ConfidentialClientApplication({
+  auth: {
+    clientId: process.env.CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${process.env.TENANT_ID}`,
+    clientSecret: process.env.CLIENT_SECRET,
+  },
+});
+
+async function getAccessToken() {
+  const result = await cca.acquireTokenByClientCredential({
+    scopes: ["https://graph.microsoft.com/.default"],
+  });
+  return result.accessToken;
+}
+
 app.post("/email", cors({ origin: "*" }), async (req, res) => {
-  let { name, email, tel, message, subject } = req.body;
+  const { name, email, tel, message } = req.body;
 
-  const transport = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_FROM,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+  try {
+    const token = await getAccessToken();
+    const sender = process.env.SENDER_EMAIL;
 
-  transport.verify(function (error, success) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log(success);
-      console.log("Server is ready to take our messages");
-    }
-  });
+    const toRecipients = process.env.RECIPIENT_EMAIL.split(",")
+      .map((addr) => addr.trim())
+      .filter(Boolean)
+      .map((addr) => ({ emailAddress: { address: addr } }));
 
-  transport.sendMail(
-    {
-      from: `mihogarenatlanta@gmail.com`,
-      to: `mihogarenatlanta@gmail.com`,
-      replyTo: email,
-      subject: `Website Contact Form: ${name}`,
-      text: `Nombre: ${name} \n Telefono: ${tel} \n Correo: ${email} \n Mensaje: ${message}`,
-    },
-    (error, info) => {
-      if (error) {
-        console.log(error);
-        res.send("error");
-      } else {
-        console.log("Email sent: " + info.response);
-        res.send("success");
+    const payload = {
+      message: {
+        subject: `Website Contact Form: ${name}`,
+        body: {
+          contentType: "Text",
+          content: `Nombre: ${name}\nTelefono: ${tel}\nCorreo: ${email}\nMensaje: ${message}`,
+        },
+        toRecipients,
+        replyTo: [{ emailAddress: { address: email } }],
+      },
+      saveToSentItems: true,
+    };
+
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${sender}/sendMail`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       }
+    );
+
+    if (response.ok) {
+      console.log("Email sent via Microsoft Graph");
+      res.send("success");
+    } else {
+      const errText = await response.text();
+      console.error("Graph error:", response.status, errText);
+      res.status(500).send("error");
     }
-  );
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("error");
+  }
 });
 
 app.listen(PORT, () => {
