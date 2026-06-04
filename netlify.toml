@@ -1,0 +1,12 @@
+[build]
+  # No hay frontend que compilar; solo desplegamos la función.
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Alias amigable: /email -> /.netlify/functions/email
+[[redirects]]
+  from = "/email"
+  to = "/.netlify/functions/email"
+  status = 200
