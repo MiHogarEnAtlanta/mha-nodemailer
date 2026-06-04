@@ -34,8 +34,16 @@ exports.handler = async (event) => {
     return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
   }
 
+  // Parseo defensivo: si el cuerpo no es JSON valido, respondemos 400 claro.
+  let body;
   try {
-    const { name, email, tel, message } = JSON.parse(event.body || "{}");
+    body = JSON.parse(event.body || "{}");
+  } catch (err) {
+    return { statusCode: 400, headers: corsHeaders, body: "invalid JSON" };
+  }
+
+  try {
+    const { name, email, tel, message } = body;
 
     const token = await getAccessToken();
     const sender = process.env.SENDER_EMAIL;
@@ -45,18 +53,21 @@ exports.handler = async (event) => {
       .filter(Boolean)
       .map((addr) => ({ emailAddress: { address: addr } }));
 
-    const payload = {
-      message: {
-        subject: `Website Contact Form: ${name}`,
-        body: {
-          contentType: "Text",
-          content: `Nombre: ${name}\nTelefono: ${tel}\nCorreo: ${email}\nMensaje: ${message}`,
-        },
-        toRecipients,
-        replyTo: [{ emailAddress: { address: email } }],
+    const mailMessage = {
+      subject: `Website Contact Form: ${name}`,
+      body: {
+        contentType: "Text",
+        content: `Nombre: ${name}\nTelefono: ${tel}\nCorreo: ${email}\nMensaje: ${message}`,
       },
-      saveToSentItems: true,
+      toRecipients,
     };
+
+    // Graph rechaza replyTo sin direccion, asi que solo lo agregamos si llego un email.
+    if (email && email.trim()) {
+      mailMessage.replyTo = [{ emailAddress: { address: email.trim() } }];
+    }
+
+    const payload = { message: mailMessage, saveToSentItems: true };
 
     const response = await fetch(
       `https://graph.microsoft.com/v1.0/users/${sender}/sendMail`,
