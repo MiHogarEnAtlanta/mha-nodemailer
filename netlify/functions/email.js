@@ -31,7 +31,11 @@ exports.handler = async (event) => {
   }
 
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers: corsHeaders, body: "Method Not Allowed" };
+    return {
+      statusCode: 405,
+      headers: corsHeaders,
+      body: "Method Not Allowed",
+    };
   }
 
   // Parseo defensivo: si el cuerpo no es JSON valido, respondemos 400 claro.
@@ -43,7 +47,10 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { name, email, tel, message } = body;
+    const { name, email, tel, message, consent } = body;
+
+    // Acepta boolean real (true) o string ("true") por si el form lo envia distinto.
+    const wantsMarketing = consent === true || consent === "true";
 
     const token = await getAccessToken();
     const sender = process.env.SENDER_EMAIL;
@@ -57,7 +64,7 @@ exports.handler = async (event) => {
       subject: `Website Contact Form: ${name}`,
       body: {
         contentType: "Text",
-        content: `Nombre: ${name}\nTelefono: ${tel}\nCorreo: ${email}\nMensaje: ${message}`,
+        content: `Nombre: ${name}\nTelefono: ${tel}\nCorreo: ${email}\nMensaje: ${message}\nAcepta marketing: ${wantsMarketing ? "Si" : "No"}`,
       },
       toRecipients,
     };
@@ -78,7 +85,7 @@ exports.handler = async (event) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-      }
+      },
     );
 
     if (response.ok) {
